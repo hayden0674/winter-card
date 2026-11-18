@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Merry Christmas · 3D 粒子圣诞树</title>
+  <style>
+    /* Reset & WeChat/Mobile Fullscreen Viewport Lock */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #060913;
+      touch-action: none;
+      overscroll-behavior: none;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    #scene {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    #scene:active {
+      cursor: grabbing;
+    }
+
+    /* Floating Glassmorphic Toolbar (Top Right) */
+    .hud-controls {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top, 14px));
+      right: max(14px, env(safe-area-inset-right, 14px));
+      z-index: 20;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      max-width: calc(100vw - 28px);
+      transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+
+    .hud-controls.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-8px);
+    }
+
+    .pill-btn {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(14, 20, 36, 0.56);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: rgba(255, 244, 250, 0.94);
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      padding: 8px 13px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+      transition: transform 0.15s ease, background-color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .pill-btn:active {
+      transform: scale(0.93);
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    /* Tiny Restore Button when Pure Viewing Mode is Active */
+    .restore-btn {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top, 14px));
+      right: max(14px, env(safe-area-inset-right, 14px));
+      z-index: 25;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(14, 20, 36, 0.42);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .restore-btn.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Subtle Gesture Guide Toast at Bottom */
+    .gesture-hint {
+      position: fixed;
+      bottom: max(76px, calc(env(safe-area-inset-bottom, 12px) + 64px));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 15;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(12, 17, 32, 0.52);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      color: rgba(235, 240, 255, 0.82);
+      font-size: 12px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+    }
+
+    .gesture-hint.show {
+      opacity: 1;
+    }
+
+    @media (max-width: 480px) {
+      .pill-btn {
+        font-size: 12px;
+        padding: 7px 11px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- Minimalist Floating Controls -->
+  <div class="hud-controls" id="hudControls">
+    <button class="pill-btn" id="btnTheme" type="button" aria-label="切换主题">🎨 换色</button>
+    <button class="pill-btn" id="btnScatter" type="button" aria-label="切换星海与树形">✨ 星海</button>
+    <button class="pill-btn" id="btnFirework" type="button" aria-label="放烟花">🎆 烟花</button>
+    <button class="pill-btn" id="btnReplay" type="button" aria-label="重播开场">🔄 重播</button>
+    <button class="pill-btn" id="btnPure" type="button" aria-label="纯净模式">👁️ 纯净</button>
+  </div>
+
+  <!-- Restore UI Button in Pure Mode -->
+  <button class="restore-btn" id="btnRestore" type="button" title="显示按钮" aria-label="显示按钮">👁️</button>
+
+  <!-- Subtle Touch Hint -->
+  <div class="gesture-hint" id="gestureHint">单指拖动旋转 · 双指缩放 · 双击散开星海</div>
+
+  <script>
+    window.onload = function () {
+      const canvas = document.getElementById("scene");
+      const ctx = canvas.getContext("2d", { alpha: false });
+
+      let width = window.innerWidth;
+      let height = window.innerHeight;
+      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      function resizeCanvas() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = width + "px";
+        canvas.style.height = height + "px";
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      resizeCanvas();
+
+      // ================= 1. Curated Color Themes =================
+      const THEMES = [
+        {
+          name: "香槟樱花粉",
+          bg: "#060812",
+          tree: [
+            [255, 165, 205],
+            [255, 205, 225],
+            [238, 128, 178],
+            [255, 232, 242],
+            [225, 165, 245]
+          ],
+          ribbon: [
+            [255, 242, 248],
+            [255, 200, 225],
+            [240, 175, 235]
+          ],
+          ornament: [
+            [255, 225, 175],
+            [255, 145, 195],
+            [215, 175, 255],
+            [255, 248, 252]
+          ],
+          star: [
+            [255, 242, 210],
+            [255, 210, 230],
+            [255, 255, 255]
+          ],
+          core: [255, 215, 235],
+          track: [
+            [210, 175, 230],
+            [245, 195, 220],
+            [175, 185, 235]
+          ],
+          planets: [
+            [255, 195, 215],
+            [215, 185, 255],
+            [255, 225, 185],
+            [185, 215, 255],
+            [255, 170, 210],
+            [235, 200, 255],
+            [200, 230, 255],
+            [255, 215, 225]
+          ],
+          text: [255, 215, 235]
+        },
+        {
+          name: "冰雪极光蓝",
+          bg: "#050A16",
+          tree: [
+            [105, 200, 255],
+            [165, 230, 255],
+            [65, 150, 240],
+            [235, 248, 255],
+            [135, 255, 230]
+          ],
+          ribbon: [
+            [235, 250, 255],
+            [135, 220, 255],
+            [175, 255, 240]
+          ],
+          ornament: [
+            [255, 228, 155],
+            [130, 225, 255],
+            [240, 248, 255],
+            [155, 255, 220]
+          ],
+          star: [
+            [225, 248, 255],
+            [255, 235, 175],
+            [255, 255, 255]
+          ],
+          core: [190, 238, 255],
+          track: [
+            [125, 190, 245],
+            [175, 230, 255],
+            [135, 225, 220]
+          ],
+          planets: [
+            [165, 225, 255],
+            [255, 225, 160],
+            [135, 245, 230],
+            [185, 205, 255],
+            [120, 200, 255],
+            [235, 248, 255],
+            [160, 240, 255],
+            [255, 210, 170]
+          ],
+          text: [195, 238, 255]
+        },
+        {
+          name: "经典翡翠金",
+          bg: "#060B10",
+          tree: [
+            [36, 185, 105],
+            [58, 218, 130],
+            [24, 145, 82],
+            [255, 215, 105],
+            [245, 82, 82]
+          ],
+          ribbon: [
+            [255, 235, 145],
+            [255, 200, 85],
+            [255, 248, 205]
+          ],
+          ornament: [
+            [255, 75, 75],
+            [255, 215, 95],
+            [255, 245, 220],
+            [255, 135, 75]
+          ],
+          star: [
+            [255, 235, 125],
+            [255, 205, 75],
+            [255, 252, 225]
+          ],
+          core: [255, 225, 135],
+          track: [
+            [235, 195, 110],
+            [120, 205, 155],
+            [245, 165, 115]
+          ],
+          planets: [
+            [255, 215, 110],
+            [245, 95, 95],
+            [95, 220, 150],
+            [255, 185, 95],
+            [255, 235, 165],
+            [235, 115, 135],
+            [125, 225, 185],
+            [255, 205, 125]
+          ],
+          text: [255, 226, 145]
+        }
+      ];
+
+      const FIREWORK_PALETTES = [
+        [[255, 220, 115], [255, 165, 205], [255, 250, 235]],
+        [[135, 225, 255], [195, 175, 255], [240, 250, 255]],
+        [[255, 135, 175], [255, 205, 135], [235, 165, 255]],
+        [[145, 255, 205], [255, 230, 135], [165, 225, 255]]
+      ];
+
+      // ================= 2. Offscreen Glow Sprite Cache =================
+      class GlowCache {
+        constructor() {
+          this.cache = new Map();
+        }
+
+        getSprite(rgb, radius, style) {
+          const rClamped = Math.max(1.0, Math.min(26.0, radius));
+          const rKey = Math.round(rClamped * 2) / 2;
+          const cr = Math.min(255, Math.max(0, rgb[0] | 0));
+          const cg = Math.min(255, Math.max(0, rgb[1] | 0));
+          const cb = Math.min(255, Math.max(0, rgb[2] | 0));
+          const key = `${cr},${cg},${cb}|${rKey}|${style}`;
+
+          let sprite = this.cache.get(key);
+          if (sprite) return sprite;
+
+          const mult = style === "planet" ? 3.4 : style === "ornament" ? 3.1 : style === "ribbon" ? 2.9 : 2.7;
+          const haloR = Math.max(3, Math.ceil(rKey * mult));
+          const size = haloR * 2;
+
+          const off = document.createElement("canvas");
+          off.width = size;
+          off.height = size;
+          const octx = off.getContext("2d");
+
+          const grad = octx.createRadialGradient(haloR, haloR, 0, haloR, haloR, haloR);
+          if (style === "planet" || style === "ornament") {
+            grad.addColorStop(0.0, "rgba(255, 255, 255, 0.98)");
+            grad.addColorStop(0.28, `rgba(${cr}, ${cg}, ${cb}, 0.90)`);
+            grad.addColorStop(0.62, `rgba(${cr}, ${cg}, ${cb}, 0.28)`);
+            grad.addColorStop(1.0, `rgba(${cr}, ${cg}, ${cb}, 0.0)`);
+          } else if (style === "ribbon") {
+            grad.addColorStop(0.0, "rgba(255, 255, 255, 0.95)");
+            grad.addColorStop(0.35, `rgba(${cr}, ${cg}, ${cb}, 0.80)`);
+            grad.addColorStop(1.0, `rgba(${cr}, ${cg}, ${cb}, 0.0)`);
+          } else {
+            grad.addColorStop(0.0, `rgba(${Math.min(255, cr + 45)}, ${Math.min(255, cg + 45)}, ${Math.min(255, cb + 45)}, 0.95)`);
+            grad.addColorStop(0.42, `rgba(${cr}, ${cg}, ${cb}, 0.45)`);
+            grad.addColorStop(1.0, `rgba(${cr}, ${cg}, ${cb}, 0.0)`);
+          }
+
+          octx.fillStyle = grad;
+          octx.beginPath();
+          octx.arc(haloR, haloR, haloR, 0, Math.PI * 2);
+          octx.fill();
+
+          if (this.cache.size > 420) {
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
+          }
+          this.cache.set(key, off);
+          return off;
+        }
+      }
+
+      // ================= 3. 3D Scene Entities =================
+      function randomSphericalCloud() {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const r = 240 + Math.random() * 440;
+        return {
+          cx: r * Math.sin(phi) * Math.cos(theta) * 1.15,
+          cy: r * Math.cos(phi) * 0.78,
+          cz: r * Math.sin(phi) * Math.sin(theta) * 1.15
+        };
+      }
+
+      function createTreeScene() {
+        const treeParticles = [];
+        const ribbonNodes = [];
+        const ornaments = [];
+
+        const treeHeight = 460.0;
+        const maxRadius = 192.0;
+
+        // 9-Tier Conical Foliage Particles
+        const layers = 9;
+        for (let layer = 0; layer < layers; layer++) {
+          const tStart = layer / layers;
+          const tEnd = Math.min(1.0, (layer + 1.15) / layers);
+          const dotsInLayer = 135 + layer * 22;
+          for (let i = 0; i < dotsInLayer; i++) {
+            const u = Math.random();
+            const t = tStart + (tEnd - tStart) * u;
+            const y = -treeHeight / 2 + t * treeHeight + (Math.random() * 10 - 5);
+            const branchFlare = 1.0 + 0.14 * Math.sin(u * Math.PI);
+            const rMax = Math.pow(t, 0.90) * maxRadius * branchFlare;
+            const r = rMax * Math.pow(Math.random(), 0.35);
+            const a = Math.random() * Math.PI * 2;
+            const cloud = randomSphericalCloud();
+
+            treeParticles.push({
+              x: r * Math.cos(a),
+              y,
+              z: r * Math.sin(a),
+              cx: cloud.cx,
+              cy: cloud.cy,
+              cz: cloud.cz,
+              baseSize: 1.35 + Math.random() * 1.25,
+              phase: Math.random() * Math.PI * 2,
+              twinkleSpeed: 2.2 + Math.random() * 2.5,
+              colorSlot: Math.floor(Math.random() * 5),
+              color: [255, 180, 210]
+            });
+          }
+        }
+
+        // 3-Strand Spiral Light Ribbon (5.5 turns)
+        const steps = 330;
+        const totalTurns = 5.5;
+        const strandOffsets = [
+          [0.0, 0.0, 3.2],
+          [-4.5, 0.06, 2.1],
+          [4.5, -0.06, 2.1]
+        ];
+        for (let i = 0; i < steps; i++) {
+          const prog = i / (steps - 1);
+          const tCone = 1.0 - prog;
+          const baseY = -treeHeight / 2 + tCone * treeHeight;
+          const baseR = Math.pow(tCone, 0.92) * (maxRadius + 10.0) + 4.0;
+          const baseAngle = prog * totalTurns * 2.0 * Math.PI;
+
+          for (let sIdx = 0; sIdx < strandOffsets.length; sIdx++) {
+            const [dy, dAng, sz] = strandOffsets[sIdx];
+            const ang = baseAngle + dAng;
+            const r = baseR + Math.sin(prog * 30.0 + sIdx) * 1.5;
+            const cloud = randomSphericalCloud();
+            ribbonNodes.push({
+              x: r * Math.cos(ang),
+              y: baseY + dy,
+              z: r * Math.sin(ang),
+              cx: cloud.cx,
+              cy: cloud.cy,
+              cz: cloud.cz,
+              progress: prog,
+              strand: sIdx,
+              baseSize: sz,
+              phase: Math.random() * Math.PI * 2,
+              color: [255, 240, 248]
+            });
+          }
+        }
+
+        // 64 Glowing Ornaments in Golden-Angle Spiral
+        const numOrnaments = 64;
+        for (let i = 0; i < numOrnaments; i++) {
+          const t = 0.14 + 0.82 * (i / numOrnaments);
+          const y = -treeHeight / 2 + t * treeHeight + (Math.random() * 12 - 6);
+          const r = Math.pow(t, 0.90) * maxRadius * (0.86 + Math.random() * 0.18);
+          const a = i * 2.39996 + (Math.random() * 0.3 - 0.15);
+          const isBauble = i % 3 !== 0;
+          const cloud = randomSphericalCloud();
+          ornaments.push({
+            x: r * Math.cos(a),
+            y,
+            z: r * Math.sin(a),
+            cx: cloud.cx,
+            cy: cloud.cy,
+            cz: cloud.cz,
+            baseSize: isBauble ? 4.2 + Math.random() * 2.0 : 3.6 + Math.random() * 1.4,
+            phase: Math.random() * Math.PI * 2,
+            colorSlot: i % 4,
+            color: [255, 220, 180]
+          });
+        }
+
+        return { treeParticles, ribbonNodes, ornaments };
+      }
+
+      // Top 3D Double-Cone Five-Pointed Star
+      function createStarParticles() {
+        const outerR = 33.0;
+        const innerR = 13.5;
+        const zDepth = 11.0;
+
+        const vertices = [];
+        for (let i = 0; i < 10; i++) {
+          const r = i % 2 === 0 ? outerR : innerR;
+          const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+          vertices.push([r * Math.cos(angle), r * Math.sin(angle), 0.0]);
+        }
+
+        const apexes = [
+          [0.0, 0.0, zDepth],
+          [0.0, 0.0, -zDepth]
+        ];
+        const starPts = [];
+
+        for (let i = 0; i < 10; i++) {
+          const p1 = vertices[i];
+          const p2 = vertices[(i + 1) % 10];
+          for (let step = 0; step < 12; step++) {
+            const u = step / 12.0;
+            starPts.push({
+              lx: p1[0] + (p2[0] - p1[0]) * u + (Math.random() * 1.6 - 0.8),
+              ly: p1[1] + (p2[1] - p1[1]) * u + (Math.random() * 1.6 - 0.8),
+              lz: Math.random() * 3.0 - 1.5,
+              size: 1.8 + Math.random() * 1.2,
+              phase: Math.random() * Math.PI * 2
+            });
+          }
+        }
+
+        for (const v of vertices) {
+          for (const apex of apexes) {
+            for (let step = 1; step < 7; step++) {
+              const u = step / 7.0;
+              starPts.push({
+                lx: apex[0] + (v[0] - apex[0]) * u,
+                ly: apex[1] + (v[1] - apex[1]) * u,
+                lz: apex[2] + (v[2] - apex[2]) * u,
+                size: 1.5 + Math.random() * 1.1,
+                phase: Math.random() * Math.PI * 2
+              });
+            }
+          }
+        }
+        return starPts;
+      }
+
+      // 8 Concentric Planetary Orbits at Tree Base
+      function createPlanetaryOrbits() {
+        const baseY = 236.0;
+        const orbitRadii = [155, 205, 258, 312, 372, 435, 500, 565];
+        const planetSizes = [6.5, 8.0, 8.5, 7.2, 13.5, 12.0, 9.5, 9.0];
+
+        const trackParticles = [];
+        const planets = [];
+
+        orbitRadii.forEach((r, idx) => {
+          const angularSpeed = 0.46 / Math.pow(r / 155.0, 0.75);
+          const numDots = Math.floor(r * 0.52);
+
+          for (let i = 0; i < numDots; i++) {
+            const angle = ((2 * Math.PI) / numDots) * i + (Math.random() * 0.04 - 0.02);
+            const rJitter = r + (Math.random() * 11 - 5.5);
+            const cloud = randomSphericalCloud();
+            trackParticles.push({
+              r: rJitter,
+              y: baseY,
+              angle,
+              speed: angularSpeed,
+              size: 1.3 + Math.random() * 1.3,
+              phase: Math.random() * Math.PI * 2,
+              cx: cloud.cx,
+              cy: cloud.cy,
+              cz: cloud.cz,
+              colorSlot: idx % 3,
+              color: [215, 180, 235]
+            });
+          }
+
+          if (idx < orbitRadii.length - 1) {
+            const midR = (r + orbitRadii[idx + 1]) * 0.5;
+            for (let k = 0; k < 34; k++) {
+              const cloud = randomSphericalCloud();
+              trackParticles.push({
+                r: midR + (Math.random() * 28 - 14),
+                y: baseY + (Math.random() * 4 - 2),
+                angle: Math.random() * Math.PI * 2,
+                speed: angularSpeed * 0.9,
+                size: 1.0 + Math.random() * 0.8,
+                phase: Math.random() * Math.PI * 2,
+                cx: cloud.cx,
+                cy: cloud.cy,
+                cz: cloud.cz,
+                colorSlot: (idx + 1) % 3,
+                color: [215, 180, 235]
+              });
+            }
+          }
+
+          const cloud = randomSphericalCloud();
+          planets.push({
+            idx,
+            r,
+            y: baseY,
+            angle: idx * 0.85 + (Math.random() * 0.4 - 0.2),
+            speed: angularSpeed * 1.12,
+            size: planetSizes[idx],
+            phase: Math.random() * Math.PI * 2,
+            cx: cloud.cx,
+            cy: cloud.cy,
+            cz: cloud.cz,
+            color: [255, 200, 225]
+          });
+        });
+
+        return { trackParticles, planets };
+      }
+
+      // Flanking Fireworks
+      class Firework {
+        constructor(w, h, delay = 0, customX = null) {
+          this.delay = delay;
+          const margin = Math.max(45, w * 0.08);
+          const leftMax = Math.max(margin + 35, w * 0.34);
+          const rightMin = Math.min(w - margin - 35, w * 0.66);
+
+          if (customX !== null) {
+            this.x = customX;
+          } else if (Math.random() < 0.5) {
+            this.x = margin + Math.random() * Math.max(10, leftMax - margin);
+          } else {
+            this.x = rightMin + Math.random() * Math.max(10, w - margin - rightMin);
+          }
+
+          this.y = h + 10;
+          this.vx = Math.random() * 2.0 - 1.0;
+          this.vy = -(10.5 + Math.random() * 3.7) * (h / 900.0);
+          this.targetY = h * (0.09 + Math.random() * 0.25);
+          this.palette = FIREWORK_PALETTES[Math.floor(Math.random() * FIREWORK_PALETTES.length)];
+          this.rocketColor = this.palette[0];
+          this.exploded = false;
+          this.sparks = [];
+          this.trail = [];
+        }
+
+        update(dt) {
+          if (this.delay > 0) {
+            this.delay -= dt;
+            return;
+          }
+          const step = dt * 60;
+          if (!this.exploded) {
+            this.trail.push([this.x, this.y]);
+            if (this.trail.length > 8) this.trail.shift();
+            this.x += this.vx * step;
+            this.y += this.vy * step;
+            this.vy += 0.14 * step;
+            if (this.y <= this.targetY || this.vy >= -1.5) {
+              this.explode();
+            }
+          } else {
+            for (let i = this.sparks.length - 1; i >= 0; i--) {
+              const s = this.sparks[i];
+              s.trail.push([s.x, s.y]);
+              if (s.trail.length > 5) s.trail.shift();
+              s.vx *= Math.pow(0.965, step);
+              s.vy *= Math.pow(0.965, step);
+              s.vy += 0.06 * step;
+              s.x += s.vx * step;
+              s.y += s.vy * step;
+              s.life -= s.decay * step;
+              if (s.life <= 0) this.sparks.splice(i, 1);
+            }
+          }
+        }
+
+        explode() {
+          this.exploded = true;
+          const count = 75 + Math.floor(Math.random() * 30);
+          const shapes = ["sphere", "double_ring", "starburst"];
+          const shape = shapes[Math.floor(Math.random() * shapes.length)];
+
+          for (let i = 0; i < count; i++) {
+            let angle, speed;
+            if (shape === "double_ring") {
+              angle = ((2 * Math.PI) / count) * i;
+              speed = (i % 2 === 0 ? 3.0 : 5.3) + (Math.random() * 0.8 - 0.4);
+            } else if (shape === "starburst") {
+              angle = ((2 * Math.PI) / count) * i;
+              const starMod = 1.0 + 0.45 * Math.cos(5 * angle);
+              speed = (2.3 + Math.random() * 2.8) * starMod;
+            } else {
+              angle = Math.random() * Math.PI * 2;
+              speed = 1.2 + Math.random() * 4.5;
+            }
+
+            this.sparks.push({
+              x: this.x,
+              y: this.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              color: this.palette[Math.floor(Math.random() * this.palette.length)],
+              size: 1.8 + Math.random() * 1.4,
+              life: 1.0,
+              decay: 0.012 + Math.random() * 0.008,
+              trail: [[this.x, this.y]]
+            });
+          }
+        }
+
+        draw(ctx, glowCache) {
+          if (this.delay > 0) return;
+          if (!this.exploded) {
+            for (let i = 0; i < this.trail.length - 1; i++) {
+              const fade = (i + 1) / this.trail.length;
+              const [r, g, b] = this.rocketColor;
+              ctx.strokeStyle = `rgba(${r},${g},${b},${fade * 0.8})`;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(this.trail[i][0], this.trail[i][1]);
+              ctx.lineTo(this.trail[i + 1][0], this.trail[i + 1][1]);
+              ctx.stroke();
+            }
+            const sp = glowCache.getSprite(this.rocketColor, 3.2, "dot");
+            ctx.drawImage(sp, this.x - sp.width / 2, this.y - sp.height / 2);
+          } else {
+            for (const s of this.sparks) {
+              const [r, g, b] = s.color;
+              if (s.trail.length >= 2) {
+                const p0 = s.trail[0];
+                const p1 = s.trail[s.trail.length - 1];
+                ctx.strokeStyle = `rgba(${r},${g},${b},${Math.max(0, s.life * 0.65)})`;
+                ctx.lineWidth = Math.max(1, s.size * s.life * 0.8);
+                ctx.beginPath();
+                ctx.moveTo(p0[0], p0[1]);
+                ctx.lineTo(p1[0], p1[1]);
+                ctx.stroke();
+              }
+              const rad = s.size * (0.4 + 0.8 * s.life);
+              const scaledCol = [r * s.life, g * s.life, b * s.life];
+              const sp = glowCache.getSprite(scaledCol, rad, "dot");
+              ctx.drawImage(sp, s.x - sp.width / 2, s.y - sp.height / 2);
+            }
+          }
+        }
+
+        isDead() {
+          return this.delay <= 0 && this.exploded && this.sparks.length === 0;
+        }
+      }
+
+      // ================= 4. Initialize Scene & State =================
+      const glowCache = new GlowCache();
+      const { treeParticles, ribbonNodes, ornaments } = createTreeScene();
+      const starPts = createStarParticles();
+      const { trackParticles, planets } = createPlanetaryOrbits();
+
+      const snowCount = Math.min(200, Math.max(110, Math.floor((width * height) / 6800)));
+      const snowflakes = Array.from({ length: snowCount }, () => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        speed: 0.55 + Math.random() * 1.25,
+        radius: 1.1 + Math.random() * 1.9,
+        drift: Math.random() * Math.PI * 2
+      }));
+
+      let fireworks = [];
+      let themeIdx = 0;
+
+      function applyTheme(idx) {
+        const th = THEMES[idx];
+        for (const p of treeParticles) p.color = th.tree[p.colorSlot];
+        for (const rn of ribbonNodes) rn.color = th.ribbon[rn.strand];
+        for (const orn of ornaments) orn.color = th.ornament[orn.colorSlot];
+        for (const tp of trackParticles) tp.color = th.track[tp.colorSlot];
+        for (const pl of planets) pl.color = th.planets[pl.idx];
+      }
+      applyTheme(themeIdx);
+
+      // Camera & Interaction State
+      let rotY = 0.0;
+      let rotVel = 0.0;
+      let starRotY = 0.0;
+      const autoSpeed = 0.45; // rad/s
+      const baseTiltX = 0.25;
+      let currentTiltX = baseTiltX;
+      let targetTiltX = baseTiltX;
+
+      let scatter = 0.0;
+      let targetScatter = 0.0;
+      let userZoom = 1.0;
+      let targetUserZoom = 1.0;
+
+      let introElapsed = 0.0;
+      const ascendDur = 3.6;
+      const pullbackDur = 2.0;
+      const introTotalDur = ascendDur + pullbackDur;
+      let starBurstTriggered = false;
+      let starBurst = 0.0;
+      let fireworkTimer = 0.0;
+
+      // ================= 5. Touch & Mouse Gestures =================
+      let isDragging = false;
+      let lastPointerX = 0;
+      let lastPointerY = 0;
+      let lastTapTime = 0;
+      let pinchStartDist = 0;
+      let pinchStartZoom = 1.0;
+
+      function toggleScatter() {
+        targetScatter = targetScatter < 0.5 ? 1.0 : 0.0;
+        const btn = document.getElementById("btnScatter");
+        btn.textContent = targetScatter > 0.5 ? "🎄 树形" : "✨ 星海";
+      }
+
+      function launchVolley() {
+        const xs = [width * 0.14, width * 0.86, width * 0.24, width * 0.76, width * 0.5];
+        xs.forEach((fx, i) => {
+          fireworks.push(new Firework(width, height, i * 0.13, fx));
+        });
+      }
+
+      function replayIntro() {
+        introElapsed = 0.0;
+        starBurstTriggered = false;
+        starBurst = 0.0;
+        targetScatter = 0.0;
+        scatter = 0.0;
+        targetUserZoom = 1.0;
+        targetTiltX = baseTiltX;
+        fireworks = [];
+        document.getElementById("btnScatter").textContent = "✨ 星海";
+      }
+
+      // Mouse Interactions
+      canvas.addEventListener("mousedown", (e) => {
+        isDragging = true;
+        lastPointerX = e.clientX;
+        lastPointerY = e.clientY;
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - lastPointerX;
+        const dy = e.clientY - lastPointerY;
+        rotY += dx * 0.0065;
+        rotVel = dx * 0.0022;
+        targetTiltX = Math.max(-0.18, Math.min(0.68, targetTiltX + dy * 0.0035));
+        lastPointerX = e.clientX;
+        lastPointerY = e.clientY;
+      });
+
+      window.addEventListener("mouseup", () => {
+        isDragging = false;
+      });
+
+      canvas.addEventListener("dblclick", () => {
+        toggleScatter();
+      });
+
+      canvas.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.92 : 1.08;
+        targetUserZoom = Math.max(0.55, Math.min(1.9, targetUserZoom * factor));
+      }, { passive: false });
+
+      // Touch Interactions (1-finger drag + 2-finger pinch + double tap)
+      canvas.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        if (e.touches.length === 1) {
+          const now = performance.now();
+          if (now - lastTapTime < 280) {
+            toggleScatter();
+            lastTapTime = 0;
+          } else {
+            lastTapTime = now;
+          }
+          isDragging = true;
+          lastPointerX = e.touches[0].clientX;
+          lastPointerY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+          isDragging = false;
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          pinchStartDist = Math.hypot(dx, dy);
+          pinchStartZoom = targetUserZoom;
+        }
+      }, { passive: false });
+
+      canvas.addEventListener("touchmove", (e) => {
+        e.preventDefault();
+        if (e.touches.length === 1 && isDragging) {
+          const tx = e.touches[0].clientX;
+          const ty = e.touches[0].clientY;
+          const dx = tx - lastPointerX;
+          const dy = ty - lastPointerY;
+          rotY += dx * 0.0075;
+          rotVel = dx * 0.0025;
+          targetTiltX = Math.max(-0.18, Math.min(0.68, targetTiltX + dy * 0.004));
+          lastPointerX = tx;
+          lastPointerY = ty;
+        } else if (e.touches.length === 2 && pinchStartDist > 0) {
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          const dist = Math.hypot(dx, dy);
+          targetUserZoom = Math.max(0.55, Math.min(1.9, pinchStartZoom * (dist / pinchStartDist)));
+        }
+      }, { passive: false });
+
+      canvas.addEventListener("touchend", (e) => {
+        if (e.touches.length === 0) {
+          isDragging = false;
+          pinchStartDist = 0;
+        }
+      }, { passive: false });
+
+      // Floating Toolbar Buttons
+      document.getElementById("btnTheme").addEventListener("click", () => {
+        themeIdx = (themeIdx + 1) % THEMES.length;
+        applyTheme(themeIdx);
+      });
+
+      document.getElementById("btnScatter").addEventListener("click", toggleScatter);
+      document.getElementById("btnFirework").addEventListener("click", launchVolley);
+      document.getElementById("btnReplay").addEventListener("click", replayIntro);
+
+      const hudControls = document.getElementById("hudControls");
+      const btnRestore = document.getElementById("btnRestore");
+      document.getElementById("btnPure").addEventListener("click", () => {
+        hudControls.classList.add("hidden");
+        btnRestore.classList.add("visible");
+      });
+      btnRestore.addEventListener("click", () => {
+        hudControls.classList.remove("hidden");
+        btnRestore.classList.remove("visible");
+      });
+
+      // Show gesture guide briefly after intro
+      const gestureHint = document.getElementById("gestureHint");
+      setTimeout(() => gestureHint.classList.add("show"), 5600);
+      setTimeout(() => gestureHint.classList.remove("show"), 11500);
+
+      window.addEventListener("resize", resizeCanvas);
+
+      // ================= 6. Helper Rendering Functions =================
+      function scaleColor(rgb, factor) {
+        const f = Math.max(0, Math.min(1, factor));
+        return [rgb[0] * f, rgb[1] * f, rgb[2] * f];
+      }
+
+      function drawGlowingTitle(text, cx, cy, fontSize, rgb, alpha) {
+        if (alpha <= 0.02) return;
+        ctx.save();
+        ctx.font = `italic ${fontSize}px Georgia, "Times New Roman", serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        const r = rgb[0] | 0;
+        const g = rgb[1] | 0;
+        const b = rgb[2] | 0;
+
+        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${0.85 * alpha})`;
+        ctx.shadowBlur = 22;
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        ctx.fillText(text, cx, cy);
+
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.72 * alpha})`;
+        ctx.fillText(text, cx, cy);
+        ctx.restore();
+      }
+
+      // ================= 7. Main 60 FPS Render Loop =================
+      let lastTime = performance.now();
+      const renderList = [];
+
+      function animate(now) {
+        const dt = Math.min(0.05, (now - lastTime) / 1000.0);
+        lastTime = now;
+        const tSec = now / 1000.0;
+
+        introElapsed += dt;
+        scatter += (targetScatter - scatter) * Math.min(1.0, dt * 4.2);
+        userZoom += (targetUserZoom - userZoom) * Math.min(1.0, dt * 6.0);
+        currentTiltX += (targetTiltX - currentTiltX) * Math.min(1.0, dt * 5.0);
+
+        if (!isDragging) {
+          rotY += rotVel;
+          rotVel *= Math.pow(0.91, dt * 60);
+        }
+
+        // Intro Camera Sweep vs Normal Orbit
+        let ribbonProgress, camZoom, camLookY, orbitAlpha, starAlpha, titleAlpha;
+        if (introElapsed < ascendDur) {
+          const u = introElapsed / ascendDur;
+          const smoothU = u * u * (3.0 - 2.0 * u);
+          ribbonProgress = smoothU;
+          camZoom = 1.85 - 0.30 * smoothU;
+          camLookY = 205.0 - 385.0 * smoothU;
+          orbitAlpha = 0.0;
+          starAlpha = Math.max(0.0, (u - 0.85) / 0.15);
+          titleAlpha = 0.0;
+          if (!isDragging) rotY += autoSpeed * 1.6 * dt;
+        } else if (introElapsed < introTotalDur) {
+          if (!starBurstTriggered) {
+            starBurstTriggered = true;
+            starBurst = 1.0;
+          }
+          const v = (introElapsed - ascendDur) / pullbackDur;
+          const easeV = 1.0 - Math.pow(1.0 - v, 3);
+          ribbonProgress = 1.0;
+          camZoom = 1.55 - 0.55 * easeV;
+          camLookY = -180.0 * (1.0 - easeV);
+          orbitAlpha = easeV;
+          starAlpha = 1.0;
+          titleAlpha = easeV;
+          if (!isDragging) rotY += autoSpeed * dt;
+        } else {
+          ribbonProgress = 1.0;
+          camZoom = 1.0;
+          camLookY = 0.0;
+          orbitAlpha = 1.0;
+          starAlpha = 1.0;
+          titleAlpha = 1.0;
+          if (!isDragging) rotY += autoSpeed * (scatter > 0.5 ? 0.45 : 1.0) * dt;
+        }
+
+        starBurst = Math.max(0.0, starBurst - dt * 0.85);
+        starRotY += 1.45 * dt;
+
+        // Ambient periodic fireworks
+        if (introElapsed > ascendDur + 0.4) {
+          fireworkTimer += dt;
+          if (fireworkTimer >= 1.25) {
+            fireworkTimer = 0.0;
+            if (fireworks.length < 7) {
+              fireworks.push(new Firework(width, height));
+            }
+          }
+        }
+
+        // Clear Background
+        const th = THEMES[themeIdx];
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = th.bg;
+        ctx.fillRect(0, 0, width, height);
+
+        // Adaptive portrait/landscape projection scale so mobile WeChat fits cleanly
+        const isPortrait = width < height;
+        const adaptiveFit = isPortrait ? Math.max(0.68, width / (height * 0.58)) : 1.0;
+        const scaleRatio = (height / 900.0) * camZoom * userZoom * adaptiveFit;
+        const fov = 720.0 * scaleRatio;
+        const centerX = width * 0.5;
+        const centerY = height * (isPortrait ? 0.45 : 0.44);
+
+        // Background Snowflakes
+        ctx.fillStyle = "rgba(218, 224, 250, 0.72)";
+        for (const s of snowflakes) {
+          s.y += s.speed * dt * 60;
+          s.x += Math.sin(tSec * 1.3 + s.drift) * 0.4 * dt * 60;
+          if (s.y > height) {
+            s.y = -5;
+            s.x = Math.random() * width;
+          }
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Additive Blending for Luminous Particles & Fireworks
+        ctx.globalCompositeOperation = "lighter";
+
+        // Update & Draw Fireworks
+        for (let i = fireworks.length - 1; i >= 0; i--) {
+          const fw = fireworks[i];
+          fw.update(dt);
+          fw.draw(ctx, glowCache);
+          if (fw.isDead()) fireworks.splice(i, 1);
+        }
+
+        const cosY = Math.cos(rotY);
+        const sinY = Math.sin(rotY);
+        const cosX = Math.cos(currentTiltX);
+        const sinX = Math.sin(currentTiltX);
+        renderList.length = 0;
+
+        const revealYLimit = 245.0 - ribbonProgress * 490.0;
+
+        // 1. Tree Foliage Particles
+        for (let i = 0; i < treeParticles.length; i++) {
+          const p = treeParticles[i];
+          if (p.y < revealYLimit - 35.0) continue;
+          const fade = Math.min(1.0, (p.y - (revealYLimit - 35.0)) / 75.0);
+          if (fade <= 0.05) continue;
+
+          const px = p.x * (1.0 - scatter) + p.cx * scatter;
+          const py = p.y * (1.0 - scatter) + p.cy * scatter;
+          const pz = p.z * (1.0 - scatter) + p.cz * scatter;
+
+          const x1 = px * cosY - pz * sinY;
+          const z1 = px * sinY + pz * cosY;
+          const pyShifted = py - camLookY;
+          const y2 = pyShifted * cosX - z1 * sinX;
+          const z2 = pyShifted * sinX + z1 * cosX;
+
+          const depth = fov + z2;
+          if (depth > 60) {
+            const scale = fov / depth;
+            const sx = centerX + x1 * scale;
+            const sy = centerY + y2 * scale;
+            const twinkle = 0.78 + 0.30 * Math.sin(tSec * p.twinkleSpeed + p.phase);
+            const radius = p.baseSize * scale * twinkle * fade * (1.0 + 0.22 * scatter);
+            renderList.push({ z: z2, sx, sy, r: radius, col: scaleColor(p.color, fade), style: "dot" });
+          }
+        }
+
+        // 2. 3-Strand Spiral Light Ribbon
+        for (let i = 0; i < ribbonNodes.length; i++) {
+          const rn = ribbonNodes[i];
+          if (rn.progress > ribbonProgress) continue;
+          const distToHead = ribbonProgress - rn.progress;
+          const isHead = distToHead < 0.035 && ribbonProgress < 0.995;
+          const headBoost = isHead ? 1.65 : 1.0;
+
+          const rx = rn.x * (1.0 - scatter) + rn.cx * scatter;
+          const ry = rn.y * (1.0 - scatter) + rn.cy * scatter;
+          const rz = rn.z * (1.0 - scatter) + rn.cz * scatter;
+
+          const x1 = rx * cosY - rz * sinY;
+          const z1 = rx * sinY + rz * cosY;
+          const ryShifted = ry - camLookY;
+          const y2 = ryShifted * cosX - z1 * sinX;
+          const z2 = ryShifted * sinX + z1 * cosX;
+
+          const depth = fov + z2;
+          if (depth > 60) {
+            const scale = fov / depth;
+            const sx = centerX + x1 * scale;
+            const sy = centerY + y2 * scale;
+            const pulse = 0.90 + 0.15 * Math.sin(tSec * 4.5 - rn.progress * 18.0 + rn.phase);
+            const radius = rn.baseSize * scale * pulse * headBoost;
+            const col = isHead ? [255, 255, 255] : rn.color;
+            renderList.push({ z: z2, sx, sy, r: radius, col, style: "ribbon" });
+          }
+        }
+
+        // 3. 64 Glowing Ornaments
+        for (let i = 0; i < ornaments.length; i++) {
+          const orn = ornaments[i];
+          if (orn.y < revealYLimit - 15.0) continue;
+          const fade = Math.min(1.0, (orn.y - (revealYLimit - 15.0)) / 65.0);
+          if (fade <= 0.05) continue;
+
+          const ox = orn.x * (1.0 - scatter) + orn.cx * scatter;
+          const oy = orn.y * (1.0 - scatter) + orn.cy * scatter;
+          const oz = orn.z * (1.0 - scatter) + orn.cz * scatter;
+
+          const x1 = ox * cosY - oz * sinY;
+          const z1 = ox * sinY + oz * cosY;
+          const oyShifted = oy - camLookY;
+          const y2 = oyShifted * cosX - z1 * sinX;
+          const z2 = oyShifted * sinX + z1 * cosX;
+
+          const depth = fov + z2;
+          if (depth > 60) {
+            const scale = fov / depth;
+            const sx = centerX + x1 * scale;
+            const sy = centerY + y2 * scale;
+            const twinkle = 0.85 + 0.22 * Math.sin(tSec * 3.0 + orn.phase);
+            const radius = orn.baseSize * scale * twinkle * fade;
+            renderList.push({ z: z2, sx, sy, r: radius, col: scaleColor(orn.color, fade), style: "ornament" });
+          }
+        }
+
+        // 4. 8 Concentric Planetary Orbits & Core
+        if (orbitAlpha > 0.02) {
+          const coreFade = orbitAlpha * (1.0 - 0.75 * scatter);
+          if (coreFade > 0.02) {
+            const coreYShifted = 236.0 - camLookY;
+            const coreY2 = coreYShifted * cosX;
+            const coreZ2 = coreYShifted * sinX;
+            if (fov + coreZ2 > 60) {
+              const coreScale = fov / (fov + coreZ2);
+              const corePulse = 18.0 * coreScale * (0.92 + 0.08 * Math.sin(tSec * 2.5)) * coreFade;
+              renderList.push({
+                z: coreZ2,
+                sx: centerX,
+                sy: centerY + coreY2 * coreScale,
+                r: corePulse,
+                col: scaleColor(th.core, coreFade),
+                style: "planet"
+              });
+            }
+          }
+
+          for (let i = 0; i < trackParticles.length; i++) {
+            const tp = trackParticles[i];
+            tp.angle += tp.speed * dt;
+            const tx0 = tp.r * Math.cos(tp.angle);
+            const ty0 = tp.y;
+            const tz0 = tp.r * Math.sin(tp.angle);
+
+            const tx = tx0 * (1.0 - scatter) + tp.cx * scatter;
+            const ty = ty0 * (1.0 - scatter) + tp.cy * scatter;
+            const tz = tz0 * (1.0 - scatter) + tp.cz * scatter;
+
+            const x1 = tx * cosY - tz * sinY;
+            const z1 = tx * sinY + tz * cosY;
+            const tyShifted = ty - camLookY;
+            const y2 = tyShifted * cosX - z1 * sinX;
+            const z2 = tyShifted * sinX + z1 * cosX;
+
+            const depth = fov + z2;
+            if (depth > 60) {
+              const scale = fov / depth;
+              const sx = centerX + x1 * scale;
+              const sy = centerY + y2 * scale;
+              const twinkle = 0.78 + 0.30 * Math.sin(tSec * 3.5 + tp.phase);
+              const radius = tp.size * scale * twinkle * orbitAlpha;
+              renderList.push({ z: z2, sx, sy, r: radius, col: scaleColor(tp.color, orbitAlpha), style: "dot" });
+            }
+          }
+
+          for (let i = 0; i < planets.length; i++) {
+            const pl = planets[i];
+            pl.angle += pl.speed * dt;
+            const px0 = pl.r * Math.cos(pl.angle);
+            const py0 = pl.y;
+            const pz0 = pl.r * Math.sin(pl.angle);
+
+            const px = px0 * (1.0 - scatter) + pl.cx * scatter;
+            const py = py0 * (1.0 - scatter) + pl.cy * scatter;
+            const pz = pz0 * (1.0 - scatter) + pl.cz * scatter;
+
+            const x1 = px * cosY - pz * sinY;
+            const z1 = px * sinY + pz * cosY;
+            const pyShifted = py - camLookY;
+            const y2 = pyShifted * cosX - z1 * sinX;
+            const z2 = pyShifted * sinX + z1 * cosX;
+
+            const depth = fov + z2;
+            if (depth > 60) {
+              const scale = fov / depth;
+              const sx = centerX + x1 * scale;
+              const sy = centerY + y2 * scale;
+              const pulse = 0.92 + 0.10 * Math.sin(tSec * 2.8 + pl.phase);
+              const radius = pl.size * scale * pulse * orbitAlpha;
+              renderList.push({ z: z2, sx, sy, r: radius, col: scaleColor(pl.color, orbitAlpha), style: "planet" });
+            }
+          }
+        }
+
+        // 5. Top 3D Double-Cone Five-Pointed Star
+        if (starAlpha > 0.02) {
+          const starCos = Math.cos(starRotY);
+          const starSin = Math.sin(starRotY);
+          const starOffsetY = -255.0;
+          const burstScale = 1.0 + 0.55 * starBurst;
+
+          for (let i = 0; i < starPts.length; i++) {
+            const sp = starPts[i];
+            const sxRot = (sp.lx * starCos - sp.lz * starSin) * burstScale;
+            const szRot = (sp.lx * starSin + sp.lz * starCos) * burstScale;
+            const syRot = sp.ly * burstScale + starOffsetY - camLookY;
+
+            const y2 = syRot * cosX - szRot * sinX;
+            const z2 = syRot * sinX + szRot * cosX;
+
+            const depth = fov + z2;
+            if (depth > 60) {
+              const scale = fov / depth;
+              const sx = centerX + sxRot * scale;
+              const sy = centerY + y2 * scale;
+              const twinkle = 0.82 + 0.32 * Math.sin(tSec * 4.5 + sp.phase);
+              const radius = sp.size * scale * twinkle * starAlpha * (1.0 + 0.4 * starBurst);
+              const col = starBurst > 0.4
+                ? [255, 255, 255]
+                : scaleColor(th.star[i % th.star.length], starAlpha);
+              renderList.push({ z: z2, sx, sy, r: radius, col, style: "dot" });
+            }
+          }
+        }
+
+        // Painter's Algorithm Depth Sort (Far-to-Near)
+        renderList.sort((a, b) => b.z - a.z);
+
+        for (let i = 0; i < renderList.length; i++) {
+          const item = renderList[i];
+          if (item.sx < -55 || item.sx > width + 55 || item.sy < -55 || item.sy > height + 55) continue;
+          const sprite = glowCache.getSprite(item.col, item.r, item.style);
+          ctx.drawImage(sprite, item.sx - sprite.width * 0.5, item.sy - sprite.height * 0.5);
+        }
+
+        // Glowing "Merry Christmas" Title at Bottom
+        ctx.globalCompositeOperation = "source-over";
+        const titleSize = Math.max(26, Math.min(44, Math.floor(width * 0.082)));
+        const titleBottomOffset = Math.max(42, Math.floor(height * 0.055));
+        drawGlowingTitle(
+          "Merry Christmas",
+          centerX,
+          height - titleBottomOffset,
+          titleSize,
+          th.text,
+          titleAlpha
+        );
+
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+    };
+  </script>
+</body>
+</html>
